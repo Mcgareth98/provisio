@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>PROVISIO</title>
+
+  <!-- PWA & iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PROVISIO" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Fuente -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            brand: { 500: '#7c3aed', 600: '#6d28d9', 700: '#5b21b6' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- Tesseract.js v4 -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Inter', system-ui, sans-serif; overscroll-behavior: none; }
+    .h-dvh { height: 100dvh; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
+    .tab-bar-height { height: calc(64px + env(safe-area-inset-bottom, 0px)); }
+
+    /* Scroll suave sin rebote iOS */
+    #view-container { -webkit-overflow-scrolling: touch; }
+
+    /* Animación de entrada de vistas */
+    .view-enter { animation: fadeSlide 0.18s ease-out; }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Badges de alerta */
+    .stock-alert { box-shadow: 0 0 0 2px rgba(239,68,68,0.3); }
+
+    /* Spinner OCR */
+    .spinner {
+      border: 3px solid rgba(124,58,237,0.2);
+      border-top-color: #7c3aed;
+      border-radius: 50%;
+      width: 28px; height: 28px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Scrollbar invisible */
+    ::-webkit-scrollbar { display: none; }
+    * { scrollbar-width: none; }
+
+    /* Modal backdrop */
+    .modal-backdrop {
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+    }
+
+    /* Chip de categoría activo */
+    .chip-active { background: #7c3aed; color: white; }
+    .chip-inactive { background: #1e293b; color: #94a3b8; }
+
+    /* Toast */
+    #toast {
+      transition: opacity 0.3s, transform 0.3s;
+    }
+    #toast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  </style>
+</head>
+<body class="bg-slate-900 text-white h-dvh overflow-hidden select-none">
+
+  <!-- ══════════════════════════════════════════════════════════
+       PANTALLA DE CARGA
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-loading" class="h-dvh flex flex-col items-center justify-center gap-4">
+    <div class="text-3xl font-bold tracking-widest text-white">PROVISIO</div>
+    <div class="spinner mx-auto mt-2"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       PANTALLA AUTH
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-auth" class="hidden h-dvh flex flex-col overflow-y-auto bg-slate-900">
+
+    <!-- Logo -->
+    <div class="flex flex-col items-center pt-16 pb-8 px-6">
+      <div class="w-16 h-16 rounded-2xl bg-brand-600 flex items-center justify-center mb-4 shadow-lg">
+        <span class="text-3xl">📦</span>
+      </div>
+      <h1 class="text-2xl font-bold tracking-widest">PROVISIO</h1>
+      <p class="text-slate-400 text-sm mt-1">Inventario doméstico inteligente</p>
+    </div>
+
+    <!-- Tabs auth -->
+    <div class="flex mx-6 mb-6 bg-slate-800 rounded-xl p-1 gap-1">
+      <button onclick="switchAuthMode('login')" id="tab-login"
+        class="auth-tab flex-1 py-2 rounded-lg text-sm font-medium transition-all bg-slate-700 text-white">
+        Entrar
+      </button>
+      <button onclick="switchAuthMode('register')" id="tab-register"
+        class="auth-tab flex-1 py-2 rounded-lg text-sm font-medium transition-all text-slate-400">
+        Crear cuenta
+      </button>
+    </div>
+
+    <!-- Formulario LOGIN -->
+    <form id="form-login" onsubmit="handleLogin(event)" class="px-6 flex flex-col gap-4">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Email</label>
+        <input id="login-email" type="email" autocomplete="email" placeholder="tu@email.com" required
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Contraseña</label>
+        <input id="login-pwd" type="password" autocomplete="current-password" placeholder="••••••••" required
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+      </div>
+      <button type="submit" id="btn-login"
+        class="mt-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-colors text-sm">
+        Iniciar sesión
+      </button>
+      <p id="login-error" class="text-red-400 text-xs text-center hidden"></p>
+    </form>
+
+    <!-- Formulario REGISTRO -->
+    <form id="form-register" onsubmit="handleRegister(event)" class="hidden px-6 flex flex-col gap-4">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Nombre completo</label>
+        <input id="reg-nombre" type="text" autocomplete="name" placeholder="Juan García" required
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Email</label>
+        <input id="reg-email" type="email" autocomplete="email" placeholder="tu@email.com" required
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Contraseña (mín. 6 caracteres)</label>
+        <input id="reg-pwd" type="password" autocomplete="new-password" placeholder="••••••••" required minlength="6"
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400 font-medium">Código de invitación <span class="text-slate-500">(opcional)</span></label>
+        <input id="reg-codigo" type="text" maxlength="6" placeholder="ABC123" autocomplete="off"
+          class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm uppercase tracking-widest focus:outline-none focus:border-brand-500 transition-colors" />
+        <p class="text-xs text-slate-500">Déjalo vacío para crear un hogar nuevo</p>
+      </div>
+      <button type="submit" id="btn-register"
+        class="mt-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-colors text-sm">
+        Crear cuenta
+      </button>
+      <p id="register-error" class="text-red-400 text-xs text-center hidden"></p>
+    </form>
+
+    <div class="h-12"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       PANTALLA APP (SPA principal)
+  ══════════════════════════════════════════════════════════ -->
+  <div id="screen-app" class="hidden h-dvh flex flex-col">
+
+    <!-- Header dinámico -->
+    <header class="flex-shrink-0 flex items-center justify-between px-5 pt-safe"
+      style="padding-top: calc(env(safe-area-inset-top, 0px) + 16px); padding-bottom: 12px; background: rgba(15,23,42,0.95); backdrop-filter: blur(12px);">
+      <div>
+        <h2 id="header-title" class="text-lg font-bold">Inventario</h2>
+        <p id="header-subtitle" class="text-xs text-slate-500 leading-none mt-0.5"></p>
+      </div>
+      <div id="header-actions" class="flex gap-2"></div>
+    </header>
+
+    <!-- Chips de categoría (solo visible en Inventario) -->
+    <div id="category-chips-bar" class="hidden flex-shrink-0 px-4 py-2 overflow-x-auto flex gap-2">
+      <!-- Generados dinámicamente -->
+    </div>
+
+    <!-- Contenedor de vistas -->
+    <main id="view-container" class="flex-1 overflow-y-auto px-4 py-3"
+      style="padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px))">
+      <!-- Contenido inyectado por app.js -->
+    </main>
+
+    <!-- Tab Bar inferior -->
+    <nav id="tab-bar"
+      class="flex-shrink-0 fixed bottom-0 inset-x-0 bg-slate-900/95 border-t border-slate-800 flex items-center justify-around tab-bar-height"
+      style="backdrop-filter: blur(12px);">
+
+      <button onclick="navigate('inventario')" id="tab-btn-inventario" class="tab-btn flex flex-col items-center gap-0.5 px-3 py-2 flex-1">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/>
+        </svg>
+        <span class="text-[10px] font-medium">Inventario</span>
+      </button>
+
+      <button onclick="navigate('compra')" id="tab-btn-compra" class="tab-btn flex flex-col items-center gap-0.5 px-3 py-2 flex-1">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m12-9l2 9m-5-9v9m-4-9v9"/>
+        </svg>
+        <span class="text-[10px] font-medium">Compra</span>
+      </button>
+
+      <!-- Botón Scan destacado -->
+      <button onclick="openScanModal()" id="tab-btn-scan"
+        class="flex flex-col items-center gap-0.5 px-2 py-1 flex-1 relative -mt-4">
+        <div class="w-14 h-14 bg-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-600/40">
+          <svg class="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 9V6a1 1 0 011-1h3M3 15v3a1 1 0 001 1h3m12-15h3a1 1 0 011 1v3m0 6v3a1 1 0 01-1 1h-3M7 9h.01M12 9h.01M17 9h.01M7 14h.01M12 14h.01M17 14h.01"/>
+          </svg>
+        </div>
+        <span class="text-[10px] font-medium text-brand-400">Scan</span>
+      </button>
+
+      <button onclick="navigate('stats')" id="tab-btn-stats" class="tab-btn flex flex-col items-center gap-0.5 px-3 py-2 flex-1">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Stats</span>
+      </button>
+
+      <button onclick="navigate('ajustes')" id="tab-btn-ajustes" class="tab-btn flex flex-col items-center gap-0.5 px-3 py-2 flex-1">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Ajustes</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       MODAL: SCAN OCR
+  ══════════════════════════════════════════════════════════ -->
+  <div id="modal-scan" class="hidden fixed inset-0 z-50 flex flex-col modal-backdrop">
+    <div class="flex-1 overflow-y-auto bg-slate-900 flex flex-col"
+      style="padding-top: env(safe-area-inset-top, 0px)">
+
+      <!-- Header modal -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <h3 class="font-bold text-base">Escanear ticket</h3>
+        <button onclick="closeScanModal()" class="text-slate-400 p-1">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Fase 1: Cámara -->
+      <div id="scan-phase-camera" class="flex flex-col flex-1">
+        <div class="relative bg-black flex-1 min-h-48 max-h-72 overflow-hidden">
+          <video id="scan-video" autoplay playsinline muted
+            class="w-full h-full object-cover"></video>
+          <!-- Guía de encuadre -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="border-2 border-brand-400 rounded-lg w-4/5 h-4/5 opacity-50"></div>
+          </div>
+        </div>
+
+        <div class="px-5 py-4 flex flex-col gap-3">
+          <button onclick="captureFrame()" id="btn-capture"
+            class="w-full bg-brand-600 text-white font-semibold py-4 rounded-2xl text-sm active:scale-95 transition-transform">
+            📸 Capturar ticket
+          </button>
+          <div class="flex items-center gap-3">
+            <div class="flex-1 h-px bg-slate-700"></div>
+            <span class="text-slate-500 text-xs">o</span>
+            <div class="flex-1 h-px bg-slate-700"></div>
+          </div>
+          <label class="w-full bg-slate-800 text-slate-300 font-medium py-3.5 rounded-2xl text-sm text-center cursor-pointer active:scale-95 transition-transform border border-slate-700">
+            📁 Subir foto
+            <input type="file" accept="image/*" id="file-input" class="hidden" onchange="handleFileUpload(event)" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Fase 2: Procesando OCR -->
+      <div id="scan-phase-processing" class="hidden flex-col items-center justify-center gap-4 p-8 flex-1">
+        <div class="spinner"></div>
+        <p class="text-slate-300 text-sm font-medium">Analizando ticket...</p>
+        <div class="w-full bg-slate-800 rounded-full h-2">
+          <div id="ocr-progress-bar" class="bg-brand-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+        <p id="ocr-progress-label" class="text-slate-500 text-xs">Iniciando motor OCR</p>
+      </div>
+
+      <!-- Fase 3: Resultados editables -->
+      <div id="scan-phase-results" class="hidden flex-col flex-1">
+        <div class="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+          <p class="text-sm text-slate-400"><span id="ocr-count">0</span> productos detectados</p>
+          <button onclick="addOCRRow()" class="text-brand-400 text-sm font-medium">+ Añadir</button>
+        </div>
+
+        <!-- Selector de espacio destino -->
+        <div class="px-5 py-3 border-b border-slate-800">
+          <label class="text-xs text-slate-400 font-medium">Guardar en espacio</label>
+          <select id="scan-espacio-select"
+            class="mt-1 w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500">
+          </select>
+        </div>
+
+        <!-- Tabla de productos -->
+        <div id="ocr-results-table" class="flex-1 overflow-y-auto px-4 py-2 flex flex-col gap-2">
+          <!-- Filas inyectadas por JS -->
+        </div>
+
+        <div class="px-5 py-4 border-t border-slate-800 flex gap-3">
+          <button onclick="resetScan()" class="flex-1 bg-slate-800 text-slate-300 font-medium py-3.5 rounded-xl text-sm">
+            Repetir
+          </button>
+          <button onclick="confirmPurchase()" id="btn-confirm-purchase"
+            class="flex-2 flex-grow bg-brand-600 text-white font-semibold py-3.5 rounded-xl text-sm active:scale-95 transition-transform">
+            Confirmar compra
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       MODAL: AÑADIR / EDITAR PRODUCTO
+  ══════════════════════════════════════════════════════════ -->
+  <div id="modal-item" class="hidden fixed inset-0 z-50 flex items-end modal-backdrop">
+    <div class="w-full bg-slate-900 rounded-t-3xl overflow-y-auto max-h-[92vh]"
+      style="padding-bottom: env(safe-area-inset-bottom, 24px)">
+
+      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mt-3 mb-4"></div>
+
+      <div class="flex items-center justify-between px-5 mb-5">
+        <h3 id="item-modal-title" class="font-bold text-base">Nuevo producto</h3>
+        <button onclick="hideModal('modal-item')" class="text-slate-400">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="form-item" onsubmit="saveItem(event)" class="px-5 flex flex-col gap-4">
+        <input type="hidden" id="item-id" />
+
+        <div class="flex gap-3">
+          <!-- Emoji categoría -->
+          <div class="flex flex-col gap-1 w-20">
+            <label class="text-xs text-slate-400 font-medium">Emoji</label>
+            <input id="item-emoji" type="text" maxlength="2" placeholder="📦"
+              class="bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-xl text-center focus:outline-none focus:border-brand-500" />
+          </div>
+          <!-- Nombre -->
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Nombre *</label>
+            <input id="item-nombre" type="text" placeholder="Leche entera" required
+              class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <!-- Categoría -->
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Categoría</label>
+            <input id="item-categoria" type="text" placeholder="Lácteos"
+              list="categorias-list"
+              class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+            <datalist id="categorias-list"></datalist>
+          </div>
+          <!-- Espacio -->
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Espacio</label>
+            <select id="item-espacio"
+              class="bg-slate-800 border border-slate-700 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-brand-500">
+            </select>
+          </div>
+        </div>
+
+        <div class="flex gap-3">
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Precio (€)</label>
+            <input id="item-precio" type="number" step="0.01" min="0" placeholder="2.50"
+              class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+          </div>
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Stock actual</label>
+            <input id="item-stock" type="number" step="0.1" min="0" placeholder="1" required
+              class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+          </div>
+          <div class="flex flex-col gap-1 flex-1">
+            <label class="text-xs text-slate-400 font-medium">Stock mín.</label>
+            <input id="item-stock-min" type="number" step="0.1" min="0" placeholder="1" required
+              class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+          </div>
+        </div>
+
+        <!-- Fraccionado -->
+        <div class="flex items-center justify-between bg-slate-800 rounded-xl px-4 py-3">
+          <div>
+            <p class="text-sm font-medium">Producto fraccionado</p>
+            <p class="text-xs text-slate-500">Ej: yogures (1 pack = 4 unidades)</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="item-fraccionado" class="sr-only peer" onchange="toggleFraccionado()" />
+            <div class="w-11 h-6 bg-slate-600 rounded-full peer peer-checked:bg-brand-600 transition-colors"></div>
+            <div class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"></div>
+          </label>
+        </div>
+
+        <div id="fraccion-row" class="hidden flex flex-col gap-1">
+          <label class="text-xs text-slate-400 font-medium">Unidades por fracción</label>
+          <input id="item-unidades-fraccion" type="number" min="2" placeholder="4"
+            class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-500" />
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="btn-delete-item" onclick="deleteCurrentItem()"
+            class="hidden bg-red-500/10 text-red-400 font-medium py-3.5 px-5 rounded-xl text-sm">
+            Eliminar
+          </button>
+          <button type="submit"
+            class="flex-1 bg-brand-600 text-white font-semibold py-3.5 rounded-xl text-sm">
+            Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       MODAL: CONFIRMAR DUPLICADO
+  ══════════════════════════════════════════════════════════ -->
+  <div id="modal-duplicate" class="hidden fixed inset-0 z-50 flex items-center justify-center px-5 modal-backdrop">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm">
+      <div class="text-3xl text-center mb-3">⚠️</div>
+      <h3 class="font-bold text-base text-center mb-2">Producto ya existe</h3>
+      <p class="text-slate-400 text-sm text-center mb-6">
+        "<span id="dup-product-name" class="text-white font-medium"></span>" ya está en este espacio.
+        ¿Qué quieres hacer?
+      </p>
+      <div class="flex gap-3">
+        <button onclick="resolveDuplicate('sobreescribir')"
+          class="flex-1 bg-slate-700 text-slate-300 font-medium py-3 rounded-xl text-sm">
+          Reemplazar
+        </button>
+        <button onclick="resolveDuplicate('sumar')"
+          class="flex-1 bg-brand-600 text-white font-semibold py-3 rounded-xl text-sm">
+          Sumar stock
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       TOAST DE NOTIFICACIONES
+  ══════════════════════════════════════════════════════════ -->
+  <div id="toast"
+    class="hidden fixed top-safe left-4 right-4 z-[100] px-4 py-3 rounded-2xl text-sm font-medium text-center shadow-lg"
+    style="top: calc(env(safe-area-inset-top, 0px) + 12px)">
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       LÓGICA PRINCIPAL
+  ══════════════════════════════════════════════════════════ -->
+  <script src="app.js"></script>
+  <script>
+    // Timeout de seguridad: si el spinner sigue visible tras 6s, mostrar login
+    setTimeout(() => {
+      const loading = document.getElementById('screen-loading');
+      if (loading && !loading.classList.contains('hidden')) {
+        loading.classList.add('hidden');
+        const auth = document.getElementById('screen-auth');
+        auth.classList.remove('hidden');
+        auth.classList.add('flex');
+      }
+    }, 6000);
+  </script>
+</body>
+</html>
