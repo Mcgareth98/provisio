@@ -186,11 +186,20 @@ async function initOCRWorker() {
 
 function switchAuthMode(mode) {
   const isLogin = mode === 'login';
-  // Usar style.display en lugar de classList para evitar conflictos con Tailwind CDN
-  document.getElementById('form-login').style.display    = isLogin ? 'flex' : 'none';
-  document.getElementById('form-register').style.display = isLogin ? 'none' : 'flex';
-  document.getElementById('form-login').style.flexDirection    = 'column';
-  document.getElementById('form-register').style.flexDirection = 'column';
+  const fLogin    = document.getElementById('form-login');
+  const fRegister = document.getElementById('form-register');
+
+  // Quitar 'hidden' primero (tiene !important y gana sobre style.display)
+  fLogin.classList.remove('hidden');
+  fRegister.classList.remove('hidden');
+
+  fLogin.style.display          = isLogin ? 'flex' : 'none';
+  fLogin.style.flexDirection    = 'column';
+  fLogin.style.gap              = '1rem';
+  fRegister.style.display       = isLogin ? 'none' : 'flex';
+  fRegister.style.flexDirection = 'column';
+  fRegister.style.gap           = '1rem';
+
   document.getElementById('tab-login').className =
     `auth-tab flex-1 py-2 rounded-lg text-sm font-medium transition-all ${isLogin ? 'bg-slate-700 text-white' : 'text-slate-400'}`;
   document.getElementById('tab-register').className =

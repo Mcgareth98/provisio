@@ -38,9 +38,6 @@
     }
   </script>
 
-  <!-- Supabase JS v2 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
   <!-- Tesseract.js v4 — defer: solo se necesita al escanear, no bloquea la carga -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js" defer></script>
 
@@ -484,6 +481,8 @@
   <!-- ══════════════════════════════════════════════════════════
        LÓGICA PRINCIPAL
   ══════════════════════════════════════════════════════════ -->
+  <!-- Supabase JS v2 — cargado justo antes de app.js para no bloquear el render -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="app.js"></script>
   <script>
     // Timeout de seguridad: si el spinner sigue visible tras 6s, mostrar login
