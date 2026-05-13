@@ -96,8 +96,9 @@ function setScreen(name) {
 function showAuthError(formId, msg) {
   const el = document.getElementById(`${formId}-error`);
   el.textContent = msg;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 4000);
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
 function setButtonLoading(btnId, loading, label = '') {
@@ -186,24 +187,12 @@ async function initOCRWorker() {
 
 function switchAuthMode(mode) {
   const isLogin = mode === 'login';
-  const fLogin    = document.getElementById('form-login');
-  const fRegister = document.getElementById('form-register');
-
-  // Quitar 'hidden' primero (tiene !important y gana sobre style.display)
-  fLogin.classList.remove('hidden');
-  fRegister.classList.remove('hidden');
-
-  fLogin.style.display          = isLogin ? 'flex' : 'none';
-  fLogin.style.flexDirection    = 'column';
-  fLogin.style.gap              = '1rem';
-  fRegister.style.display       = isLogin ? 'none' : 'flex';
-  fRegister.style.flexDirection = 'column';
-  fRegister.style.gap           = '1rem';
-
-  document.getElementById('tab-login').className =
-    `auth-tab flex-1 py-2 rounded-lg text-sm font-medium transition-all ${isLogin ? 'bg-slate-700 text-white' : 'text-slate-400'}`;
-  document.getElementById('tab-register').className =
-    `auth-tab flex-1 py-2 rounded-lg text-sm font-medium transition-all ${!isLogin ? 'bg-slate-700 text-white' : 'text-slate-400'}`;
+  document.getElementById('form-login').style.display    = isLogin ? 'flex' : 'none';
+  document.getElementById('form-register').style.display = isLogin ? 'none' : 'flex';
+  document.getElementById('tab-login').style.cssText =
+    isLogin ? 'background:#334155;color:#fff' : 'background:transparent;color:#94a3b8';
+  document.getElementById('tab-register').style.cssText =
+    !isLogin ? 'background:#334155;color:#fff' : 'background:transparent;color:#94a3b8';
 }
 
 async function handleLogin(e) {
@@ -212,21 +201,22 @@ async function handleLogin(e) {
   const pwd   = document.getElementById('login-pwd').value;
   setButtonLoading('btn-login', true);
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password: pwd });
-  setButtonLoading('btn-login', false, 'Iniciar sesión');
+  try {
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pwd });
+    if (error) throw error;
 
-  if (error) {
+    const { data: { session } } = await supabase.auth.getSession();
+    currentUser = session.user;
+    await loadProfile();
+    await loadHogar();
+    silentPurge();
+    setScreen('app');
+    navigate('inventario');
+  } catch (err) {
     showAuthError('login', 'Email o contraseña incorrectos');
-    return;
+  } finally {
+    setButtonLoading('btn-login', false, 'Iniciar sesión');
   }
-
-  const { data: { session } } = await supabase.auth.getSession();
-  currentUser = session.user;
-  await loadProfile();
-  await loadHogar();
-  await silentPurge();
-  setScreen('app');
-  navigate('inventario');
 }
 
 async function handleRegister(e) {
@@ -238,39 +228,36 @@ async function handleRegister(e) {
 
   setButtonLoading('btn-register', true);
 
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: pwd,
-    options: { data: { full_name: nombre } },
-  });
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pwd,
+      options: { data: { full_name: nombre } },
+    });
 
-  if (error) {
-    setButtonLoading('btn-register', false, 'Crear cuenta');
-    showAuthError('register', error.message);
-    return;
-  }
+    if (error) throw error;
+    if (!data.user) throw new Error('No se pudo crear el usuario');
 
-  currentUser = data.user;
+    currentUser = data.user;
 
-  // Esperar a que el trigger cree el perfil (debería ser inmediato)
-  await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 800));
 
-  if (codigo) {
-    const ok = await joinHogar(codigo);
-    if (!ok) {
-      setButtonLoading('btn-register', false, 'Crear cuenta');
-      showAuthError('register', 'Código de invitación no válido');
-      return;
+    if (codigo) {
+      const ok = await joinHogar(codigo);
+      if (!ok) throw new Error('Código de invitación no válido');
+    } else {
+      await createHogar(nombre + "'s Home");
     }
-  } else {
-    await createHogar(nombre + "'s Home");
-  }
 
-  await loadProfile();
-  await loadHogar();
-  setScreen('app');
-  navigate('inventario');
-  setButtonLoading('btn-register', false, 'Crear cuenta');
+    await loadProfile();
+    await loadHogar();
+    setScreen('app');
+    navigate('inventario');
+  } catch (err) {
+    showAuthError('register', err.message || 'Error al crear la cuenta');
+  } finally {
+    setButtonLoading('btn-register', false, 'Crear cuenta');
+  }
 }
 
 async function handleSignOut() {

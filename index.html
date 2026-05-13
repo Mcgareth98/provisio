@@ -129,7 +129,7 @@
     </div>
 
     <!-- Formulario LOGIN -->
-    <form id="form-login" onsubmit="handleLogin(event)" class="px-6 flex flex-col gap-4">
+    <form id="form-login" onsubmit="handleLogin(event)" style="display:flex;flex-direction:column;gap:1rem;padding:0 1.5rem">
       <div class="flex flex-col gap-1">
         <label class="text-xs text-slate-400 font-medium">Email</label>
         <input id="login-email" type="email" autocomplete="email" placeholder="tu@email.com" required
@@ -144,11 +144,11 @@
         class="mt-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-colors text-sm">
         Iniciar sesión
       </button>
-      <p id="login-error" class="text-red-400 text-xs text-center hidden"></p>
+      <p id="login-error" style="display:none;color:#f87171;font-size:0.75rem;text-align:center"></p>
     </form>
 
     <!-- Formulario REGISTRO -->
-    <form id="form-register" onsubmit="handleRegister(event)" class="hidden px-6 flex flex-col gap-4">
+    <form id="form-register" onsubmit="handleRegister(event)" style="display:none;flex-direction:column;gap:1rem;padding:0 1.5rem">
       <div class="flex flex-col gap-1">
         <label class="text-xs text-slate-400 font-medium">Nombre completo</label>
         <input id="reg-nombre" type="text" autocomplete="name" placeholder="Juan García" required
@@ -174,7 +174,7 @@
         class="mt-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-colors text-sm">
         Crear cuenta
       </button>
-      <p id="register-error" class="text-red-400 text-xs text-center hidden"></p>
+      <p id="register-error" style="display:none;color:#f87171;font-size:0.75rem;text-align:center"></p>
     </form>
 
     <div class="h-12"></div>
